@@ -1,0 +1,3 @@
+com\agenda\view\RoleDialog.class
+com\agenda\auth\RoleManager.class
+com\agenda\auth\RoleManager$Role.class

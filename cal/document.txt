@@ -1,0 +1,99 @@
+Binôme: Kadaoui Yacine Adil & Hamadache Ali – G6 ISIL
+Manuel d’utilisation
+
+1) Aperçu
+- Application de gestion d’événements (Java Swing) avec 3 vues: Liste, Hebdomadaire, Mensuelle.
+- Actions clés: ajouter, modifier, supprimer, partager, consulter rappels.
+- Rôles: Visiteur (lecture seule) et Admin (édition complète).
+
+Menu d’utilisation (récapitulatif)
+- Accès Admin:
+  - Bouton « Nouveau rendez-vous »: ouvrir le formulaire d’ajout.
+  - Vue Liste (clic droit sur une ligne): Modifier | Supprimer | Partager.
+  - Vue Hebdomadaire (clic gauche sur cellule avec événements): Modifier | Supprimer | Partager.
+  - Vue Mensuelle:
+    - Double-clic sur un événement: modifier.
+    - Clic droit sur un jour: liste des événements du jour (Modifier/Supprimer/Partager).
+    - Jour vide: menu « Ajouter événement ».
+  - Raccourcis: Ctrl+N (ajouter), Suppr (supprimer la sélection).
+- Accès Visiteur:
+  - Consultation uniquement des vues et infobulles.
+  - Boutons et menus d’édition désactivés.
+- Formulaire d’événement:
+  - Saisir Titre*, Date*, Heure*; ajouter des participants; saisir la description.
+  - Valider pour enregistrer; Supprimer en mode édition; Annuler.
+- Rappels & Statut:
+  - Rappels automatiques pour événements dans ≤ 60 minutes (notification et barre de statut).
+  - Barre de rappels (haut): liste des événements imminents.
+
+2) Lancement & Rôles
+- Au démarrage: choisir le rôle (RoleDialog).
+- Visiteur: lecture seule; boutons d’ajout/édition désactivés.
+- Admin: choisir un nom d’admin, entrer le code « prenom123 » (ex: ali123).
+
+3) Vues
+A. Vue Liste ( VUE RAPIDE)
+- Tableau des événements; champ de recherche pour filtrer.
+- Clic droit sur une ligne: Modifier | Supprimer | Partager.
+- Bouton « Ajouter » (Admin): ouvre le formulaire.
+
+B. Vue Hebdomadaire ( PLANNING 7J)
+- Grille par jour; les événements d’une cellule ont un menu: Modifier, Supprimer, Partager.
+- Boutons de navigation pour changer de semaine.
+- Rafraîchissement automatique après les actions.
+
+C. Vue Mensuelle ( CALENDRIER)
+- Cases par jour avec liste d’événements et infobulles détaillées.
+- Clic droit sur un jour: menu listant tous les événements du jour (Modifier/Supprimer/Partager).
+- Double-clic sur un événement: ouvre directement la modification.
+- Jour vide: menu « Ajouter événement ».
+
+4) Formulaire d’événement (Ajouter/Modifier)
+- Champs: Titre*, Date*, Heure* (saisie libre), Responsable, Participants, Description.
+- Participants: champ + bouton « + », liste avec bouton « Retirer ».
+- Boutons:
+  - Ajout: Ajouter, Annuler.
+  - Modification: Valider, Supprimer, Annuler.
+- Validation: message d’erreur si champs obligatoires manquants.
+
+5) Menus contextuels
+- Vue Liste: clic droit sur ligne.
+- Hebdo: clic gauche sur cellule avec événements.
+- Mensuel: clic droit sur jour; menu rapide sur événement affiché.
+
+6) Raccourcis clavier
+- Ctrl+N: ajouter un événement (désactivé en mode visiteur).
+- Suppr (Delete): supprimer l’événement sélectionné dans l’onglet actif.
+
+7) Rappels & Barre de statut
+- Rappels: notification si un événement commence dans ≤ 60 minutes.
+- Barre de statut: messages d’action (ajout, modification, suppression, rappel).
+
+8) Partage d’événements
+- Option « Partager » dans les menus.
+- Sélection d’utilisateurs, confirmation; affichage d’une notification.
+
+9) Thème & Ergonomie
+- Palette marron/beige (onglets, boutons, barres, tables).
+- Tableau: en-tête marron, texte blanc; lignes lisibles.
+- Infobulles mensuelles: heure, titre, responsable, participants, description abrégée.
+
+10) Tri & Affichage
+- Événements triés par heure à l’intérieur d’un jour.
+
+
+11) Dépannage rapide
+- Mode visiteur: impossible d’ajouter/modifier/supprimer (comportement normal).
+- Forcer l’actualisation:
+  - Changer d’onglet ou effectuer une action; l’UI se rafraîchit automatiquement.
+
+12) Références des classes
+- `AgendaView`: fenêtre, onglets, rappels, raccourcis, barre de statut.
+- `AgendaPanel`: vue liste, recherche, menus contextuels.
+- `HebdoPanelNew`: vue hebdomadaire, menus et navigation.
+- `MensuelPanel`: calendrier mensuel, infobulles, menus par jour.
+- `AgendaForm`: formulaire d’ajout/modification (validation, participants).
+- `AgendaController`: gestion des événements (ajouter, modifier, supprimer, du jour).
+- `RoleManager`: rôles et utilisateur courant.
+- `PartageDialog`: sélection d’utilisateurs pour partage.
+

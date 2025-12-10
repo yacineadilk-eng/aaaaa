@@ -1,0 +1,587 @@
+package com.agenda.view;
+
+import com.agenda.controller.AgendaController;
+import com.agenda.model.Agenda;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.datatransfer.*;
+import java.awt.dnd.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.*;
+import java.util.List;
+
+public class MensuelPanel extends JPanel {
+	private AgendaController controller;
+	private Map<LocalDate, JTextPane> zoneParDate = new HashMap<>();
+	private JPanel gridPanel;
+	private Agenda selectedEvent;
+
+	public MensuelPanel(AgendaController controller) {
+		this.controller = controller;
+		setLayout(new BorderLayout());
+		setBackground(new Color(245, 245, 245)); // Fond gris clair
+
+		JPanel headerPanel = new JPanel(new GridLayout(1, 7));
+		headerPanel.setBackground(new Color(245, 245, 245));
+		String[] jours = {"Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"};
+		for (String jour : jours) {
+			JLabel label = new JLabel(jour, SwingConstants.CENTER);
+			label.setFont(new Font("Segoe UI", Font.BOLD, 12));
+			label.setForeground(new Color(51, 51, 51));
+			headerPanel.add(label);
+		}
+
+		gridPanel = new JPanel(new GridLayout(0, 7, 5, 5));
+		gridPanel.setBackground(new Color(245, 245, 245));
+
+		YearMonth moisActuel = YearMonth.now();
+		LocalDate premierJour = moisActuel.atDay(1);
+		int decalage = (premierJour.getDayOfWeek().getValue() + 6) % 7;
+		int nbJours = moisActuel.lengthOfMonth();
+
+		for (int i = 0; i < decalage; i++) {
+			gridPanel.add(new JPanel());
+		}
+
+		for (int i = 1; i <= nbJours; i++) {
+			LocalDate date = moisActuel.atDay(i);
+			JPanel caseJour = new JPanel(new BorderLayout());
+			caseJour.setBackground(Color.WHITE);
+			caseJour.setBorder(BorderFactory.createLineBorder(new Color(208, 208, 208)));
+
+			JLabel labelJour = new JLabel(String.valueOf(i), SwingConstants.CENTER);
+			labelJour.setFont(new Font("Segoe UI", Font.BOLD, 12));
+			labelJour.setForeground(new Color(51, 51, 51));
+
+			JTextPane zone = new JTextPane();
+			zone.setEditable(false);
+			zone.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+			zone.setBackground(new Color(250, 250, 250));
+			zone.setForeground(new Color(51, 51, 51));
+			zone.setContentType("text/html");
+            
+			// Activer le drop
+			new DropTarget(zone, new DropTargetAdapter() {
+				@Override
+				public void dragEnter(DropTargetDragEvent dtde) {
+					zone.setBackground(new Color(200, 230, 255)); // Bleu clair pendant survol
+				}
+                
+				@Override
+				public void dragExit(DropTargetEvent dte) {
+					zone.setBackground(new Color(250, 250, 250)); // Restaurer couleur originale
+				}
+                
+				@Override
+				public void drop(DropTargetDropEvent dtde) {
+					try {
+						dtde.acceptDrop(DnDConstants.ACTION_MOVE);
+						Transferable transferable = dtde.getTransferable();
+						String data = (String) transferable.getTransferData(DataFlavor.stringFlavor);
+                        
+						String[] parts = data.split("\\|);
+						if (parts.length >= 3) {
+							String titre = parts[0];
+							LocalDate ancienneDate = LocalDate.parse(parts[1]);
+							String ancienneHeure = parts[2];
+
+							// Trouver l'événement
+							List<Agenda> tousEvenements = controller.getEvenements();
+							Agenda evtADeplacer = null;
+							for (Agenda evt : tousEvenements) {
+								if (evt.getTitre().equals(titre) && 
+									evt.getDate().equals(ancienneDate) && 
+									evt.getHeure().equals(ancienneHeure)) {
+									evtADeplacer = evt;
+									break;
+								}
+							}
+
+							if (evtADeplacer != null) {
+								evtADeplacer.setDate(date);
+								actualiser();
+								SwingUtilities.invokeLater(() -> {
+									Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+									if (root instanceof AgendaView view) {
+										view.actualiserToutesLesVues();
+									}
+								});
+								JOptionPane.showMessageDialog(MensuelPanel.this, 
+									"✅ Événement '" + titre + "' déplacé vers " + date,
+									"Déplacement réussi", 
+									JOptionPane.INFORMATION_MESSAGE);
+								Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+								if (root instanceof AgendaView view) {
+									view.notifierAction("Événement déplacé : '" + titre + "' → " + date);
+								}
+							}
+						}
+						dtde.dropComplete(true);
+					} catch (Exception ex) {
+						dtde.dropComplete(false);
+					}
+					zone.setBackground(new Color(250, 250, 250));
+				}
+			});
+            
+			// Activer le drag avec changement de couleur (uniquement pour l'utilisateur courant)
+			zone.addMouseMotionListener(new MouseAdapter() {
+				@Override
+				public void mouseDragged(MouseEvent e) {
+					String texte = zone.getText();
+					if (texte != null && !texte.trim().isEmpty()) {
+						// Extraire le premier événement
+						String plainText = texte.replaceAll("<[^>]*>", ""); // Retirer HTML
+						String[] blocs = plainText.split("\\n\\n");
+						if (blocs.length > 0) {
+							String bloc = blocs[0];
+							String[] lignes = bloc.split("\\n");
+							if (lignes.length > 0) {
+								String ligne = lignes[0];
+								String titre = ligne.contains(" - ") ? ligne.split(" - ")[1] : ligne;
+                                
+								for (Agenda evt : controller.getEvenements()) {
+									if (evt.getDate().equals(date) && evt.getTitre().equals(titre.trim())) {
+										// Vérifier si l'utilisateur est le responsable
+										if (evt.getResponsable() != null && evt.getResponsable().equals(AgendaForm.UTILISATEUR_COURANT)) {
+											// Changer la couleur pendant le drag
+											zone.setBackground(new Color(255, 200, 150)); // Orange clair
+                                            
+											TransferHandler handler = new TransferHandler("text") {
+												@Override
+												protected Transferable createTransferable(JComponent c) {
+													return new StringSelection(evt.getTitre() + "|" + evt.getDate() + "|" + evt.getHeure());
+												}
+                                                
+												@Override
+												public int getSourceActions(JComponent c) {
+													return MOVE;
+												}
+                                                
+												@Override
+												protected void exportDone(JComponent source, Transferable data, int action) {
+													// Restaurer la couleur après le drag
+													zone.setBackground(new Color(250, 250, 250));
+												}
+											};
+											zone.setTransferHandler(handler);
+											handler.exportAsDrag(zone, e, TransferHandler.MOVE);
+										} else {
+											// Afficher un message si ce n'est pas son événement
+											JOptionPane.showMessageDialog(MensuelPanel.this,
+												"⚠️ Seul le responsable (" + evt.getResponsable() + ") peut déplacer cet événement.",
+												"Déplacement non autorisé",
+												JOptionPane.WARNING_MESSAGE);
+										}
+										break;
+									}
+								}
+							}
+						}
+					}
+				}
+			});
+
+			JScrollPane scroll = new JScrollPane(zone);
+			scroll.setPreferredSize(new Dimension(100, 80));
+			scroll.setBorder(null);
+
+			caseJour.add(labelJour, BorderLayout.NORTH);
+			caseJour.add(scroll, BorderLayout.CENTER);
+			zoneParDate.put(date, zone);
+
+			zone.addMouseListener(new MouseAdapter() {
+				@Override
+				public void mouseClicked(MouseEvent e) {
+					// Double-clic pour éditer un événement
+					if (e.getClickCount() == 2) {
+						String texte = zone.getText();
+						if (texte != null && !texte.trim().isEmpty()) {
+							String[] blocs = texte.split("\n\n");
+							if (blocs.length > 0) {
+								String bloc = blocs[0];
+								String[] lignes = bloc.split("\n");
+								if (lignes.length > 0) {
+									String ligne = lignes[0];
+									String titre = ligne.contains(" - ") ? ligne.split(" - ")[1] : ligne;
+                                    
+									// Trouver l'événement correspondant
+									for (Agenda evt : controller.getEvenements()) {
+										if (evt.getDate().equals(date) && evt.getTitre().equals(titre.trim())) {
+											AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(MensuelPanel.this), evt, controller);
+											form.setVisible(true);
+											if (form.estValide()) {
+												if (form.estSupprime()) {
+													controller.supprimerEvenement(date, titre.trim());
+													Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+													if (root instanceof AgendaView view) {
+														view.notifierAction("Événement supprimé : '" + titre.trim() + "' le " + date);
+													}
+												}
+												SwingUtilities.invokeLater(() -> {
+													Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+													if (root instanceof AgendaView view) {
+														view.actualiserToutesLesVues();
+													}
+												});
+											}
+											break;
+										}
+									}
+								}
+							}
+						}
+					}
+					// Clic droit pour menu contextuel
+					else if (SwingUtilities.isRightMouseButton(e)) {
+						int pos = zone.viewToModel2D(e.getPoint());
+						String texte = zone.getText();
+						String[] blocs = texte.split("\n\n");
+
+						int blocIndex = -1;
+						int charCount = 0;
+						for (int i = 0; i < blocs.length; i++) {
+							charCount += blocs[i].length() + 2;
+							if (pos <= charCount) {
+								blocIndex = i;
+								break;
+							}
+						}
+
+						if (blocIndex >= 0 && blocIndex < blocs.length) {
+							String bloc = blocs[blocIndex];
+							String[] lignes = bloc.split("\n");
+							if (lignes.length > 0) {
+								String ligne = lignes[0];
+								String titre = ligne.contains(" - ") ? ligne.split(" - ")[1] : ligne;
+
+								// Trouver l'événement correspondant
+								Agenda evenementSelectionne = null;
+								for (Agenda evt : controller.getEvenements()) {
+									if (evt.getDate().equals(date) && evt.getTitre().equals(titre.trim())) {
+										evenementSelectionne = evt;
+										break;
+									}
+								}
+
+								if (evenementSelectionne != null) {
+									final Agenda evtFinal = evenementSelectionne;
+									MensuelPanel.this.selectedEvent = evenementSelectionne;
+									JPopupMenu menu = new JPopupMenu();
+                                    
+									JMenuItem modifier = new JMenuItem("✏️ Modifier");
+									JMenuItem supprimer = new JMenuItem("🗑️ Supprimer");
+									JMenuItem ajouter = new JMenuItem("➕ Ajouter événement");
+
+									modifier.addActionListener(ev -> {
+										java.time.LocalDate ancienneDate = evtFinal.getDate();
+										String ancienTitre = evtFinal.getTitre();
+										AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(MensuelPanel.this), evtFinal, controller);
+										form.setVisible(true);
+										if (form.estValide()) {
+											if (form.estSupprime()) {
+												controller.supprimerEvenement(ancienneDate, ancienTitre);
+												Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+												if (root instanceof AgendaView view) {
+													view.notifierAction("Événement supprimé : '" + ancienTitre + "' le " + ancienneDate);
+												}
+											} else {
+												boolean ok = controller.modifierEvenement(ancienneDate, ancienTitre, form.getEvenement());
+												if (ok) {
+													Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+													if (root instanceof AgendaView view) {
+														view.notifierAction("Événement modifié : '" + form.getEvenement().getTitre() + "' le " + form.getEvenement().getDate());
+													}
+												}
+											}
+											SwingUtilities.invokeLater(() -> {
+												Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+												if (root instanceof AgendaView view) {
+													view.actualiserToutesLesVues();
+												}
+											});
+										}
+									});
+
+									supprimer.addActionListener(ev -> {
+										int choix = JOptionPane.showConfirmDialog(
+											MensuelPanel.this,
+											"Voulez-vous vraiment supprimer l'événement '" + evtFinal.getTitre() + "' ?",
+											"Confirmation",
+											JOptionPane.YES_NO_OPTION,
+											JOptionPane.WARNING_MESSAGE
+										);
+										if (choix == JOptionPane.YES_OPTION) {
+											controller.supprimerEvenement(date, titre.trim());
+											SwingUtilities.invokeLater(() -> {
+												Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+												if (root instanceof AgendaView view) {
+													view.actualiserToutesLesVues();
+												}
+											});
+										}
+									});
+
+									ajouter.addActionListener(ev -> {
+										AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(MensuelPanel.this), controller);
+										form.setVisible(true);
+										if (form.estValide()) {
+											Agenda evt = form.getEvenement();
+											controller.ajouterEvenement(evt);
+											SwingUtilities.invokeLater(() -> {
+												Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+												if (root instanceof AgendaView view) {
+													view.actualiserToutesLesVues();
+												}
+											});
+										}
+									});
+
+									menu.add(modifier);
+									menu.add(supprimer);
+									JMenuItem partager = new JMenuItem("🔗 Partager");
+									partager.addActionListener(ev -> {
+										Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+										if (root instanceof AgendaView view) {
+											java.util.List<String> users = java.util.Arrays.asList(
+												"Ali Paychen", "Ikene Manel", "Yacine Kadaoui", "Zaza Khlifaoui", "Ouri Baouida"
+											);
+											PartageDialog pd = new PartageDialog((JFrame) root, users);
+											pd.setVisible(true);
+											if (pd.estValide()) {
+												java.util.List<String> sel = pd.getSelectedUsers();
+												view.notifierAction("Événement partagé avec " + sel.size() + " utilisateur(s).");
+											}
+										}
+									});
+									menu.addSeparator();
+									menu.add(ajouter);
+									menu.addSeparator();
+									menu.add(partager);
+									menu.show(zone, e.getX(), e.getY());
+								}
+							}
+						}
+					} 
+					// Clic simple pour ajouter
+					else if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
+						int pos = zone.viewToModel2D(e.getPoint());
+						String texte = zone.getText();
+						String[] blocs = texte != null ? texte.split("\n\n") : new String[0];
+
+						int blocIndex = -1;
+						int charCount = 0;
+						for (int i = 0; i < blocs.length; i++) {
+							charCount += blocs[i].length() + 2;
+							if (pos <= charCount) {
+								blocIndex = i;
+								break;
+							}
+						}
+
+						if (blocIndex >= 0 && blocIndex < blocs.length) {
+							String bloc = blocs[blocIndex];
+							String[] lignes = bloc.split("\n");
+							if (lignes.length > 0) {
+								String ligne = lignes[0];
+								String titre = ligne.contains(" - ") ? ligne.split(" - ")[1] : ligne;
+
+								// Trouver l'événement correspondant
+								Agenda evenementSelectionne = null;
+								for (Agenda evt : controller.getEvenements()) {
+									if (evt.getDate().equals(date) && evt.getTitre().equals(titre.trim())) {
+										evenementSelectionne = evt;
+										break;
+									}
+								}
+
+								if (evenementSelectionne != null) {
+									final Agenda evtFinal = evenementSelectionne;
+									MensuelPanel.this.selectedEvent = evenementSelectionne;
+									JPopupMenu menu = new JPopupMenu();
+									JMenuItem modifier = new JMenuItem("✏️ Modifier");
+									JMenuItem supprimer = new JMenuItem("🗑️ Supprimer");
+									JMenuItem ajouter = new JMenuItem("➕ Ajouter événement");
+
+									modifier.addActionListener(ev -> {
+										AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(MensuelPanel.this), evtFinal, controller);
+										form.setVisible(true);
+										if (form.estValide()) {
+											if (form.estSupprime()) {
+												controller.supprimerEvenement(date, titre.trim());
+											}
+											SwingUtilities.invokeLater(() -> {
+												Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+												if (root instanceof AgendaView view) {
+													view.actualiserToutesLesVues();
+												}
+											});
+										}
+									});
+
+									supprimer.addActionListener(ev -> {
+										int choix = JOptionPane.showConfirmDialog(
+											MensuelPanel.this,
+											"Voulez-vous vraiment supprimer l'événement '" + evtFinal.getTitre() + "' ?",
+											"Confirmation",
+											JOptionPane.YES_NO_OPTION,
+											JOptionPane.WARNING_MESSAGE
+										);
+										if (choix == JOptionPane.YES_OPTION) {
+											controller.supprimerEvenement(date, titre.trim());
+											SwingUtilities.invokeLater(() -> {
+												Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+												if (root instanceof AgendaView view) {
+													view.actualiserToutesLesVues();
+												}
+											});
+										}
+									});
+
+									ajouter.addActionListener(ev -> {
+										AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(MensuelPanel.this), controller);
+										form.setVisible(true);
+										if (form.estValide()) {
+											Agenda evt = form.getEvenement();
+											controller.ajouterEvenement(evt);
+											SwingUtilities.invokeLater(() -> {
+												Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+												if (root instanceof AgendaView view) {
+													view.actualiserToutesLesVues();
+												}
+											});
+										}
+									});
+
+									menu.add(modifier);
+									menu.add(supprimer);
+									JMenuItem partager = new JMenuItem("🔗 Partager");
+									partager.addActionListener(ev -> {
+										Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+										if (root instanceof AgendaView view) {
+											java.util.List<String> users = java.util.Arrays.asList(
+												"Ali Paychen", "Ikene Manel", "Yacine Kadaoui", "Zaza Khlifaoui", "Ouri Baouida"
+											);
+											PartageDialog pd = new PartageDialog((JFrame) root, users);
+											pd.setVisible(true);
+											if (pd.estValide()) {
+												java.util.List<String> sel = pd.getSelectedUsers();
+												view.notifierAction("Événement partagé avec " + sel.size() + " utilisateur(s).");
+											}
+										}
+									});
+									menu.addSeparator();
+									menu.add(ajouter);
+									menu.addSeparator();
+									menu.add(partager);
+									menu.show(zone, e.getX(), e.getY());
+								}
+							}
+						} else {
+							// Aucun bloc: ouvrir formulaire d'ajout
+							AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(MensuelPanel.this), controller);
+							form.setVisible(true);
+							if (form.estValide()) {
+								Agenda evt = form.getEvenement();
+								controller.ajouterEvenement(evt);
+								SwingUtilities.invokeLater(() -> {
+									Component root = SwingUtilities.getWindowAncestor(MensuelPanel.this);
+									if (root instanceof AgendaView view) {
+										view.actualiserToutesLesVues();
+									}
+								});
+							}
+						}
+					}
+				}
+			});
+
+			gridPanel.add(caseJour);
+		}
+
+		add(headerPanel, BorderLayout.NORTH);
+		add(gridPanel, BorderLayout.CENTER);
+	}
+
+	public void actualiser() {
+		for (LocalDate date : zoneParDate.keySet()) {
+			afficherEvenements(date);
+		}
+	}
+
+	public Agenda getSelectedEvent() {
+		return selectedEvent;
+	}
+
+	public void setSelectedEvent(Agenda evt) {
+		this.selectedEvent = evt;
+	}
+
+	private void afficherEvenements(LocalDate date) {
+		var evenements = controller.getEvenements();
+		var duJour = new ArrayList<Agenda>();
+
+		for (Agenda evt : evenements) {
+			if (evt.getDate().equals(date)) {
+				duJour.add(evt);
+			}
+		}
+
+		duJour.sort(Comparator.comparing(evt -> evt.getHeure() != null ? evt.getHeure() : "00:00"));
+		JTextPane zone = zoneParDate.get(date);
+        
+		// Créer le contenu HTML
+		StringBuilder contenu = new StringBuilder("<html><body style='font-family: Segoe UI; font-size: 11px;'>");
+        
+		// Créer le tooltip détaillé
+		StringBuilder tooltip = new StringBuilder("<html><body style='width: 280px; padding: 8px;'>");
+		tooltip.append("<h3 style='color: #654321; margin: 0;'>📅 Événements du ").append(date.getDayOfMonth()).append("/").append(date.getMonthValue()).append("</h3>");
+		tooltip.append("<hr style='border: 1px solid #DDD;'>");
+        
+		for (Agenda evt : duJour) {
+			// Contenu affiché
+			contenu.append("<div style='background-color: #E8F5E9; padding: 4px; margin: 2px; border-left: 3px solid #4CAF50; border-radius: 3px;'>");
+			contenu.append("<b style='color: #2E7D32;'>").append(evt.getHeure()).append(" - ").append(evt.getTitre()).append("</b><br>");
+			if (evt.getDescription() != null && !evt.getDescription().isEmpty()) {
+				contenu.append("<span style='color: #555;'>").append(evt.getDescription()).append("</span>");
+			}
+			contenu.append("</div><br>");
+            
+			// Tooltip détaillé
+			tooltip.append("<div style='background-color: #FFF8DC; padding: 8px; margin: 6px 0; border-left: 4px solid #4CAF50; border-radius: 4px;'>");
+			tooltip.append("<b style='color: #2E7D32; font-size: 12px;'>📋 ").append(evt.getTitre()).append("</b><br>");
+			tooltip.append("🕒 <b>Heure:</b> ").append(evt.getHeure()).append("<br>");
+			tooltip.append("👤 <b>Responsable:</b> ").append(evt.getResponsable() != null ? evt.getResponsable() : "Non assigné").append("<br>");
+            
+			if (evt.getParticipants() != null && !evt.getParticipants().isEmpty()) {
+				tooltip.append("👥 <b>Participants:</b> ").append(String.join(", ", evt.getParticipants())).append("<br>");
+			}
+            
+			if (evt.getDescription() != null && !evt.getDescription().isEmpty()) {
+				String desc = evt.getDescription();
+				if (desc.length() > 80) {
+					desc = desc.substring(0, 80) + "...";
+				}
+				tooltip.append("📝 <b>Description:</b><br><i>").append(desc).append("</i><br>");
+			}
+            
+			tooltip.append("<span style='color: #888; font-size: 9px;'>💡 Double-clic pour modifier | Glisser pour déplacer</span>");
+			tooltip.append("</div>");
+		}
+        
+		if (duJour.isEmpty()) {
+			tooltip.append("<p style='color: #888; font-style: italic;'>Aucun événement prévu</p>");
+		}
+        
+		tooltip.append("</body></html>");
+		contenu.append("</body></html>");
+        
+		zone.setText(contenu.toString());
+		zone.setToolTipText(tooltip.toString());
+	}
+}
+

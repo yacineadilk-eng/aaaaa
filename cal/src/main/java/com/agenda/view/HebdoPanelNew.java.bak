@@ -1,0 +1,615 @@
+package com.agenda.view;
+
+import com.agenda.controller.AgendaController;
+import com.agenda.model.Agenda;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.datatransfer.*;
+import java.awt.dnd.*;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.List;
+
+public class HebdoPanelNew extends JPanel {
+    private final AgendaController controller;
+    private final Map<String, CelluleHebdo> cellules = new HashMap<>();
+    private LocalDate lundiSemaine;
+
+    public HebdoPanelNew(AgendaController controller) {
+        this.controller = controller;
+        setLayout(new BorderLayout());
+        setBackground(new Color(245, 240, 235));
+
+        // Calculer le lundi de la semaine actuelle
+        LocalDate aujourd = LocalDate.now();
+        lundiSemaine = aujourd.minusDays(aujourd.getDayOfWeek().getValue() - 1);
+
+        // Panneau principal avec grille : 1 ligne en-tête + 13 lignes heures, 1 col heures + 7 cols jours
+        JPanel grillePanel = new JPanel(new GridLayout(14, 8, 2, 2));
+        grillePanel.setBackground(new Color(245, 240, 235));
+
+        // Première ligne : en-tête avec jours
+        grillePanel.add(creerCelluleEnTete(""));  // Coin supérieur gauche vide
+        String[] jours = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
+        for (int j = 0; j < 7; j++) {
+            LocalDate date = lundiSemaine.plusDays(j);
+            String texte = "<html><center>" + jours[j] + "<br>" + date.getDayOfMonth() + "/" + date.getMonthValue() + "</center></html>";
+            grillePanel.add(creerCelluleEnTete(texte));
+        }
+
+        // Créneaux horaires de 8h à 20h
+        for (int heure = 8; heure <= 20; heure++) {
+            String heureStr = String.format("%02d:00", heure);
+            
+            // Première colonne : afficher l'heure
+            grillePanel.add(creerCelluleEnTete(heureStr));
+
+            // 7 colonnes pour les jours
+            for (int jour = 0; jour < 7; jour++) {
+                LocalDate date = lundiSemaine.plusDays(jour);
+                String cle = date + "_" + heureStr;
+                CelluleHebdo cellule = new CelluleHebdo(date, heureStr);
+                cellules.put(cle, cellule);
+                grillePanel.add(cellule);
+            }
+        }
+
+        // Panneau de navigation
+        JPanel navPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
+        navPanel.setBackground(new Color(245, 240, 235));
+
+        JButton btnPrecedent = new JButton("← Semaine précédente");
+        JButton btnAujourdhui = new JButton("🏠 Aujourd'hui");
+        JButton btnSuivant = new JButton("Semaine suivante →");
+        
+        JButton btnAjouter = new JButton("➕ AJOUTER ÉVÉNEMENT");
+        btnAjouter.setFont(new Font("Arial", Font.BOLD, 12));
+        btnAjouter.setBackground(new Color(76, 175, 80));
+        btnAjouter.setForeground(Color.WHITE);
+        btnAjouter.setFocusPainted(false);
+        btnAjouter.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnAjouter.addActionListener(e -> {
+            Component root = SwingUtilities.getWindowAncestor(HebdoPanelNew.this);
+            if (root instanceof AgendaView view) {
+                AgendaForm form = new AgendaForm((JFrame) root, controller);
+                form.setVisible(true);
+                if (form.estValide()) {
+                    Agenda evt = form.getEvenement();
+                    controller.ajouterEvenement(evt);
+                    actualiser();
+                    view.actualiserToutesLesVues();
+                }
+            }
+        });
+
+        btnPrecedent.addActionListener(e -> changerSemaine(-7));
+        btnAujourdhui.addActionListener(e -> {
+            LocalDate auj = LocalDate.now();
+            lundiSemaine = auj.minusDays(auj.getDayOfWeek().getValue() - 1);
+            reconstruireVue();
+        });
+        btnSuivant.addActionListener(e -> changerSemaine(7));
+
+        navPanel.add(btnPrecedent);
+        navPanel.add(btnAujourdhui);
+        navPanel.add(btnSuivant);
+        navPanel.add(Box.createHorizontalStrut(30));
+        navPanel.add(btnAjouter);
+
+        add(navPanel, BorderLayout.NORTH);
+        add(new JScrollPane(grillePanel), BorderLayout.CENTER);
+
+        actualiser();
+    }
+
+    private Agenda selectedEvent;
+
+    public Agenda getSelectedEvent() {
+        return selectedEvent;
+    }
+
+    public void setSelectedEvent(Agenda evt) {
+        this.selectedEvent = evt;
+    }
+
+    private JPanel creerCelluleEnTete(String texte) {
+        JPanel panel = new JPanel();
+        panel.setBackground(new Color(139, 90, 60));
+        panel.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY));
+        JLabel label;
+        if (texte.startsWith("<html>")) {
+            label = new JLabel(texte);
+        } else {
+            label = new JLabel("<html><center>" + texte + "</center></html>");
+        }
+        label.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        label.setForeground(Color.WHITE);
+        panel.add(label);
+        return panel;
+    }
+
+    private void changerSemaine(int jours) {
+        lundiSemaine = lundiSemaine.plusDays(jours);
+        reconstruireVue();
+    }
+
+    private void reconstruireVue() {
+        removeAll();
+        cellules.clear();
+
+        JPanel grillePanel = new JPanel(new GridLayout(14, 8, 2, 2));
+        grillePanel.setBackground(new Color(245, 245, 245));
+
+        // Première ligne : en-tête avec jours
+        grillePanel.add(creerCelluleEnTete(""));  // Coin supérieur gauche vide
+        String[] jours = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
+        for (int j = 0; j < 7; j++) {
+            LocalDate date = lundiSemaine.plusDays(j);
+            String texte = "<html><center>" + jours[j] + "<br>" + date.getDayOfMonth() + "/" + date.getMonthValue() + "</center></html>";
+            grillePanel.add(creerCelluleEnTete(texte));
+        }
+
+        for (int heure = 8; heure <= 20; heure++) {
+            String heureStr = String.format("%02d:00", heure);
+            
+            // Première colonne : afficher l'heure
+            grillePanel.add(creerCelluleEnTete(heureStr));
+
+            // 7 colonnes pour les jours
+            for (int jour = 0; jour < 7; jour++) {
+                LocalDate date = lundiSemaine.plusDays(jour);
+                String cle = date + "_" + heureStr;
+                CelluleHebdo cellule = new CelluleHebdo(date, heureStr);
+                cellules.put(cle, cellule);
+                grillePanel.add(cellule);
+            }
+        }
+
+        JPanel navPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
+        navPanel.setBackground(new Color(245, 245, 245));
+
+        JButton btnPrecedent = new JButton("← Semaine précédente");
+        JButton btnAujourdhui = new JButton("🏠 Aujourd'hui");
+        JButton btnSuivant = new JButton("Semaine suivante →");
+        
+        JButton btnAjouter = new JButton("➕ AJOUTER ÉVÉNEMENT");
+        btnAjouter.setFont(new Font("Arial", Font.BOLD, 12));
+        btnAjouter.setBackground(new Color(76, 175, 80));
+        btnAjouter.setForeground(Color.WHITE);
+        btnAjouter.setFocusPainted(false);
+        btnAjouter.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnAjouter.addActionListener(e -> {
+            Component root = SwingUtilities.getWindowAncestor(HebdoPanelNew.this);
+            if (root instanceof AgendaView view) {
+                AgendaForm form = new AgendaForm((JFrame) root, controller);
+                form.setVisible(true);
+                if (form.estValide()) {
+                    Agenda evt = form.getEvenement();
+                    controller.ajouterEvenement(evt);
+                    actualiser();
+                    view.actualiserToutesLesVues();
+                }
+            }
+        });
+
+        btnPrecedent.addActionListener(e -> changerSemaine(-7));
+        btnAujourdhui.addActionListener(e -> {
+            LocalDate auj = LocalDate.now();
+            lundiSemaine = auj.minusDays(auj.getDayOfWeek().getValue() - 1);
+            reconstruireVue();
+        });
+        btnSuivant.addActionListener(e -> changerSemaine(7));
+
+        navPanel.add(btnPrecedent);
+        navPanel.add(btnAujourdhui);
+        navPanel.add(btnSuivant);
+        navPanel.add(Box.createHorizontalStrut(30));
+        navPanel.add(btnAjouter);
+
+        add(navPanel, BorderLayout.NORTH);
+        add(new JScrollPane(grillePanel), BorderLayout.CENTER);
+
+        actualiser();
+        revalidate();
+        repaint();
+    }
+
+    public void actualiser() {
+        // Vider toutes les cellules
+        for (CelluleHebdo cellule : cellules.values()) {
+            cellule.vider();
+        }
+
+        // Remplir avec les événements
+        List<Agenda> evenements = controller.getEvenements();
+        for (Agenda evt : evenements) {
+            if (evt.getDate() != null && evt.getHeure() != null) {
+                String heure = evt.getHeure().substring(0, Math.min(5, evt.getHeure().length()));
+                String cle = evt.getDate() + "_" + heure;
+                CelluleHebdo cellule = cellules.get(cle);
+                if (cellule != null) {
+                    cellule.ajouterEvenement(evt);
+                }
+            }
+        }
+    }
+
+    // Classe interne pour une cellule du calendrier hebdomadaire
+    class CelluleHebdo extends JPanel implements DropTargetListener {
+        private final LocalDate date;
+        private final String heure;
+        private final List<Agenda> evenements = new ArrayList<>();
+        private final JLabel label;
+
+        public CelluleHebdo(LocalDate date, String heure) {
+            this.date = date;
+            this.heure = heure;
+
+            setLayout(new BorderLayout());
+            setBackground(Color.WHITE);
+            setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
+
+            label = new JLabel("", SwingConstants.CENTER);
+            label.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+            label.setVerticalAlignment(SwingConstants.TOP);
+            add(label, BorderLayout.CENTER);
+
+            // Activer le drop
+            new DropTarget(this, this);
+
+            // Menu contextuel et double-clic pour éditer
+            addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override
+                public void mousePressed(java.awt.event.MouseEvent e) {
+                    if (SwingUtilities.isRightMouseButton(e)) {
+                        afficherMenu(e);
+                    }
+                }
+
+                @Override
+                public void mouseClicked(java.awt.event.MouseEvent e) {
+                    if (e.getClickCount() == 2 && !evenements.isEmpty()) {
+                        // Double-clic : ouvrir le formulaire d'édition du premier événement
+                        Agenda evt = evenements.get(0);
+                        java.time.LocalDate ancienneDate = evt.getDate();
+                        String ancienTitre = evt.getTitre();
+
+                        AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(HebdoPanelNew.this), evt, controller);
+                        form.setVisible(true);
+                        if (form.estValide()) {
+                            if (form.estSupprime()) {
+                                controller.supprimerEvenement(ancienneDate, ancienTitre);
+                                Component root = SwingUtilities.getWindowAncestor(HebdoPanelNew.this);
+                                if (root instanceof AgendaView view) {
+                                    view.notifierAction("Événement supprimé : '" + ancienTitre + "' le " + ancienneDate);
+                                }
+                            } else {
+                                boolean ok = controller.modifierEvenement(ancienneDate, ancienTitre, form.getEvenement());
+                                if (ok) {
+                                    Component root = SwingUtilities.getWindowAncestor(HebdoPanelNew.this);
+                                    if (root instanceof AgendaView view) {
+                                        view.notifierAction("Événement modifié : '" + form.getEvenement().getTitre() + "' le " + form.getEvenement().getDate());
+                                    }
+                                }
+                            }
+                            actualiser();
+                            rafraichirVuePrincipale();
+                        }
+                    }
+                    // Mettre à jour la sélection pour raccourcis clavier
+                    if (!evenements.isEmpty() && SwingUtilities.isLeftMouseButton(e)) {
+                        HebdoPanelNew.this.setSelectedEvent(evenements.get(0));
+                    }
+                }
+            });
+        }
+
+        public void ajouterEvenement(Agenda evt) {
+            evenements.add(evt);
+            actualiserAffichage();
+
+            // Activer le drag uniquement si l'utilisateur est le responsable
+            if (evt.getResponsable() != null && evt.getResponsable().equals(AgendaForm.UTILISATEUR_COURANT)) {
+                label.setTransferHandler(new TransferHandler("text") {
+                    @Override
+                    protected Transferable createTransferable(JComponent c) {
+                        return new StringSelection(evt.getTitre() + "|" + evt.getDate() + "|" + evt.getHeure());
+                    }
+
+                    @Override
+                    public int getSourceActions(JComponent c) {
+                        return MOVE;
+                    }
+
+                    @Override
+                    protected void exportDone(JComponent source, Transferable data, int action) {
+                        if (action == MOVE) {
+                            // L'événement a été déplacé
+                        }
+                    }
+                });
+            } else {
+                // Désactiver le drag pour les événements des autres utilisateurs
+                label.setTransferHandler(null);
+                label.setToolTipText(label.getToolTipText() + "<br><span style='color: red;'>⚠️ Seul le responsable peut déplacer cet événement</span>");
+            }
+
+            label.addMouseMotionListener(new java.awt.event.MouseAdapter() {
+                @Override
+                public void mouseDragged(java.awt.event.MouseEvent e) {
+                    if (!evenements.isEmpty()) {
+                        // Changement de couleur lors du déplacement
+                        setBackground(new Color(255, 200, 150)); // Orange clair
+                        JComponent c = (JComponent) e.getSource();
+                        TransferHandler handler = c.getTransferHandler();
+                        handler.exportAsDrag(c, e, TransferHandler.MOVE);
+                    }
+                }
+            });
+            
+            // Ajouter effet de sélection au clic
+            label.addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override
+                public void mousePressed(java.awt.event.MouseEvent e) {
+                    if (!evenements.isEmpty() && SwingUtilities.isLeftMouseButton(e)) {
+                        setBackground(new Color(255, 235, 200)); // Beige clair sélectionné
+                    }
+                }
+                
+                @Override
+                public void mouseClicked(java.awt.event.MouseEvent e) {
+                    // Single left-click: afficher menu Modifier / Supprimer pour les événements présents
+                    if (!evenements.isEmpty() && SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
+                        JPopupMenu menu = new JPopupMenu();
+                        for (Agenda evt : new ArrayList<>(evenements)) {
+                            JMenuItem editerItem = new JMenuItem("✏️ Modifier: " + evt.getTitre());
+                    editerItem.addActionListener(ev -> {
+                        java.time.LocalDate ancienneDate = evt.getDate();
+                        String ancienTitre = evt.getTitre();
+                        AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(HebdoPanelNew.this), evt, controller);
+                        form.setVisible(true);
+                        if (form.estValide()) {
+                            if (form.estSupprime()) {
+                                controller.supprimerEvenement(ancienneDate, ancienTitre);
+                                Component root = SwingUtilities.getWindowAncestor(HebdoPanelNew.this);
+                                if (root instanceof AgendaView view) {
+                                    view.notifierAction("Événement supprimé : '" + ancienTitre + "' le " + ancienneDate);
+                                }
+                            } else {
+                                boolean ok = controller.modifierEvenement(ancienneDate, ancienTitre, form.getEvenement());
+                                if (ok) {
+                                    Component root = SwingUtilities.getWindowAncestor(HebdoPanelNew.this);
+                                    if (root instanceof AgendaView view) {
+                                        view.notifierAction("Événement modifié : '" + form.getEvenement().getTitre() + "' le " + form.getEvenement().getDate());
+                                    }
+                                }
+                            }
+                            actualiser();
+                            rafraichirVuePrincipale();
+                        }
+                    });
+                            menu.add(editerItem);
+
+                            JMenuItem supprimerItem = new JMenuItem("🗑️ Supprimer: " + evt.getTitre());
+                            supprimerItem.addActionListener(ev -> {
+                                int choix = JOptionPane.showConfirmDialog(
+                                    HebdoPanelNew.this,
+                                    "Voulez-vous vraiment supprimer l'événement '" + evt.getTitre() + "' ?",
+                                    "Confirmation",
+                                    JOptionPane.YES_NO_OPTION,
+                                    JOptionPane.WARNING_MESSAGE
+                                );
+                                if (choix == JOptionPane.YES_OPTION) {
+                                    controller.supprimerEvenement(evt.getDate(), evt.getTitre());
+                                    actualiser();
+                                    rafraichirVuePrincipale();
+                                }
+                            });
+                            menu.add(supprimerItem);
+                            menu.addSeparator();
+                            JMenuItem partagerItem = new JMenuItem("🔗 Partager: " + evt.getTitre());
+                            partagerItem.addActionListener(ev -> {
+                                Component root = SwingUtilities.getWindowAncestor(HebdoPanelNew.this);
+                                if (root instanceof AgendaView view) {
+                                    java.util.List<String> users = java.util.Arrays.asList(
+                                        "Ali Paychen", "Ikene Manel", "Yacine Kadaoui", "Zaza Khlifaoui", "Ouri Baouida"
+                                    );
+                                    PartageDialog pd = new PartageDialog((JFrame) root, users);
+                                    pd.setVisible(true);
+                                    if (pd.estValide()) {
+                                        java.util.List<String> sel = pd.getSelectedUsers();
+                                        view.notifierAction("Événement partagé avec " + sel.size() + " utilisateur(s).");
+                                    }
+                                }
+                            });
+                            menu.add(partagerItem);
+                        }
+                        menu.show(label, e.getX(), e.getY());
+                    }
+                }
+
+                @Override
+                public void mouseReleased(java.awt.event.MouseEvent e) {
+                    actualiserAffichage(); // Restaurer la couleur originale
+                }
+            });
+        }
+
+        public void vider() {
+            evenements.clear();
+            actualiserAffichage();
+        }
+
+        private void actualiserAffichage() {
+            if (evenements.isEmpty()) {
+                label.setText("");
+                setBackground(Color.WHITE);
+                setToolTipText(null);
+            } else {
+                StringBuilder html = new StringBuilder("<html><center>");
+                StringBuilder tooltip = new StringBuilder("<html><body style='width: 250px; padding: 5px;'>");
+                
+                for (Agenda evt : evenements) {
+                    html.append("<b>").append(evt.getTitre()).append("</b><br>");
+                    
+                    // Tooltip détaillé
+                    tooltip.append("<div style='background-color: #FFF8DC; padding: 8px; margin: 4px; border-left: 4px solid #8B4513; border-radius: 4px;'>");
+                    tooltip.append("<b style='color: #654321; font-size: 13px;'>📋 ").append(evt.getTitre()).append("</b><br>");
+                    tooltip.append("<hr style='border: 1px solid #DDD;'>");
+                    tooltip.append("🕒 <b>Heure:</b> ").append(evt.getHeure()).append("<br>");
+                    tooltip.append("📅 <b>Date:</b> ").append(evt.getDate()).append("<br>");
+                    tooltip.append("👤 <b>Responsable:</b> ").append(evt.getResponsable() != null ? evt.getResponsable() : "Non assigné").append("<br>");
+                    
+                    if (evt.getParticipants() != null && !evt.getParticipants().isEmpty()) {
+                        tooltip.append("👥 <b>Participants:</b> ").append(String.join(", ", evt.getParticipants())).append("<br>");
+                    }
+                    
+                    if (evt.getDescription() != null && !evt.getDescription().isEmpty()) {
+                        tooltip.append("📝 <b>Description:</b><br><i>").append(evt.getDescription()).append("</i><br>");
+                    }
+                    
+                    tooltip.append("<span style='color: #888; font-size: 10px;'>📌 Double-cliquez pour modifier</span>");
+                    tooltip.append("</div>");
+                }
+                html.append("</center></html>");
+                tooltip.append("</body></html>");
+                
+                label.setText(html.toString());
+                setBackground(new Color(235, 220, 200));
+                setToolTipText(tooltip.toString());
+            }
+        }
+
+        private void afficherMenu(java.awt.event.MouseEvent e) {
+            JPopupMenu menu = new JPopupMenu();
+
+            JMenuItem ajouterItem = new JMenuItem("➕ Ajouter événement");
+            ajouterItem.addActionListener(ev -> {
+                AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(HebdoPanelNew.this), controller);
+                form.setVisible(true);
+                if (form.estValide()) {
+                    Agenda evt = form.getEvenement();
+                    evt.setDate(date);
+                    evt.setHeure(heure);
+                    controller.ajouterEvenement(evt);
+                    actualiser();
+                    rafraichirVuePrincipale();
+                }
+            });
+            menu.add(ajouterItem);
+
+            if (!evenements.isEmpty()) {
+                menu.addSeparator();
+                for (Agenda evt : evenements) {
+                    JMenuItem editerItem = new JMenuItem("✏️ Éditer: " + evt.getTitre());
+                    editerItem.addActionListener(ev -> {
+                        AgendaForm form = new AgendaForm((JFrame) SwingUtilities.getWindowAncestor(HebdoPanelNew.this), evt, controller);
+                        form.setVisible(true);
+                        if (form.estValide()) {
+                            if (form.estSupprime()) {
+                                controller.supprimerEvenement(evt.getDate(), evt.getTitre());
+                            }
+                            actualiser();
+                            rafraichirVuePrincipale();
+                        }
+                    });
+                    menu.add(editerItem);
+
+                    JMenuItem supprimerItem = new JMenuItem("🗑️ Supprimer: " + evt.getTitre());
+                    supprimerItem.addActionListener(ev -> {
+                        controller.supprimerEvenement(evt.getDate(), evt.getTitre());
+                        Component root = SwingUtilities.getWindowAncestor(HebdoPanelNew.this);
+                        if (root instanceof AgendaView view) {
+                            view.notifierAction("Événement supprimé : '" + evt.getTitre() + "' le " + evt.getDate());
+                        }
+                        actualiser();
+                        rafraichirVuePrincipale();
+                    });
+                    menu.add(supprimerItem);
+                }
+            }
+
+            menu.show(this, e.getX(), e.getY());
+        }
+
+        // Implémentation du DropTargetListener
+        @Override
+        public void dragEnter(DropTargetDragEvent dtde) {
+            setBackground(new Color(230, 210, 180)); // Beige clair pendant le survol
+        }
+
+        @Override
+        public void dragOver(DropTargetDragEvent dtde) {
+            // Rien de spécial
+        }
+
+        @Override
+        public void dropActionChanged(DropTargetDragEvent dtde) {
+            // Rien
+        }
+
+        @Override
+        public void dragExit(DropTargetEvent dte) {
+            actualiserAffichage(); // Restaurer la couleur d'origine
+        }
+
+        @Override
+        public void drop(DropTargetDropEvent dtde) {
+            try {
+                dtde.acceptDrop(DnDConstants.ACTION_MOVE);
+                Transferable transferable = dtde.getTransferable();
+                String data = (String) transferable.getTransferData(DataFlavor.stringFlavor);
+                
+                String[] parts = data.split("\\|");
+                if (parts.length >= 3) {
+                    String titre = parts[0];
+                    LocalDate ancienneDate = LocalDate.parse(parts[1]);
+                    String ancienneHeure = parts[2];
+
+                    // Trouver l'événement dans le contrôleur
+                    List<Agenda> tousEvenements = controller.getEvenements();
+                    Agenda evtADeplacer = null;
+                    for (Agenda evt : tousEvenements) {
+                        if (evt.getTitre().equals(titre) && 
+                            evt.getDate().equals(ancienneDate) && 
+                            evt.getHeure().equals(ancienneHeure)) {
+                            evtADeplacer = evt;
+                            break;
+                        }
+                    }
+
+                    if (evtADeplacer != null) {
+                        // Mettre à jour la date et l'heure
+                        evtADeplacer.setDate(date);
+                        evtADeplacer.setHeure(heure);
+
+                        // Rafraîchir l'affichage
+                        actualiser();
+                        rafraichirVuePrincipale();
+
+                        // Message de confirmation
+                        JOptionPane.showMessageDialog(this, 
+                            "✅ Événement '" + titre + "' déplacé vers " + date + " à " + heure,
+                            "Déplacement réussi", 
+                            JOptionPane.INFORMATION_MESSAGE);
+                    }
+                }
+
+                dtde.dropComplete(true);
+            } catch (Exception e) {
+                dtde.dropComplete(false);
+            }
+            actualiserAffichage();
+        }
+
+        private void rafraichirVuePrincipale() {
+            SwingUtilities.invokeLater(() -> {
+                Component root = SwingUtilities.getWindowAncestor(HebdoPanelNew.this);
+                if (root instanceof AgendaView view) {
+                    view.actualiserToutesLesVues();
+                }
+            });
+        }
+    }
+}
